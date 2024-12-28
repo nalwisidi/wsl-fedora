@@ -9,10 +9,13 @@ ARG PASSWORD=password
 RUN curl -o /etc/yum.repos.d/hashicorp.repo https://rpm.releases.hashicorp.com/fedora/hashicorp.repo
 
 # Add the K9s repository
-RUN dnf copr enable emanuelec/k9s -y
+RUN dnf copr enable -y emanuelec/k9s
+
+# Add the LF repository
+RUN dnf copr enable -y lsevcik/lf
 
 # Define package groups
-ARG BASE_PACKAGES="rsync wget curl vim zsh bash-completion tar unzip zip zstd htop tmux tree fastfetch"
+ARG BASE_PACKAGES="rsync wget curl vi vim neovim zsh zoxide fzf bash-completion tar unzip zip zstd top btop lf stow tmux tree fastfetch"
 ARG DEV_LANGUAGES="python3 python3-pip nodejs npm java-21-openjdk ruby golang perl rust"
 ARG CONTAINER_TOOLS="docker podman buildah"
 ARG DEVOPS_TOOLS="kubectl k9s helm ansible terraform vault consul packer dnsmasq"
@@ -88,9 +91,18 @@ EXPOSE 22 80 443 3306 5432 6379
 # Switch to the new user by default
 USER $USERNAME
 
-# Set Zsh as the default shell and install Oh-My-Zsh
-RUN sh -c "$(wget https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O -)" && \
-    sudo chsh -s $(which zsh)
+# Set ZSH as the default shell
+RUN sudo chsh -s $(which zsh)
+
+# Setup dotfiles
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/nalwisdi/dotfiles/main/bootstrap.sh)"
+
+# Prepare NvChad (nvim)
+RUN echo "Installing NvChad plugins and tools..." && \
+    nvim --headless "+Lazy! sync" +qa
+
+# Prepare TMUX
+RUN sh $XDG_CONFIG_HOME/tmux/plugins/tpm/bin/install_plugins
 
 # Default command
 CMD ["/bin/zsh"]
