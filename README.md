@@ -35,8 +35,6 @@ This project provides a fully-configured Fedora-based DevOps environment that ca
 
 ## 🛠️ Steps to Set Up WSL with Fedora
 
-> **⚠️ NOTE:** Make sure to run the PowerShell terminal as **Administrator** 🛡️ for the WSL and Docker commands.
-
 ### 1️⃣ Enable WSL and Virtual Machine Platform
 
 1. Open a PowerShell terminal **as Administrator**.
