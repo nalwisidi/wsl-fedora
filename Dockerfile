@@ -91,18 +91,15 @@ EXPOSE 22 80 443 3306 5432 6379
 # Switch to the new user by default
 USER $USERNAME
 
+# Setup dotfiles
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/nalwisidi/dotfiles/main/bootstrap.sh)"
+
 # Set ZSH as the default shell
 RUN sudo chsh -s $(which zsh)
-
-# Setup dotfiles
-RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/nalwisdi/dotfiles/main/bootstrap.sh)"
 
 # Prepare NvChad (nvim)
 RUN echo "Installing NvChad plugins and tools..." && \
     nvim --headless "+Lazy! sync" +qa
-
-# Prepare TMUX
-RUN sh $XDG_CONFIG_HOME/tmux/plugins/tpm/bin/install_plugins
 
 # Default command
 CMD ["/bin/zsh"]
