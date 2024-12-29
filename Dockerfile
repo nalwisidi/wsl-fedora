@@ -2,7 +2,7 @@
 FROM fedora:latest
 
 # Modify your username & password
-ARG USERNAME=devops
+ARG USERNAME=dvp
 ARG PASSWORD=password
 
 # Add the HashiCorp repository
@@ -46,31 +46,7 @@ RUN dnf install -y \
     rm -rf /var/cache/dnf
 
 # Configure WSL settings
-RUN echo -e "[user]\ndefault=$USERNAME\n[network]\ngenerateResolvConf = false\n[boot]\nsystemd=true" > /etc/wsl.conf
-
-# Disable resolv.conf generation
-RUN systemctl disable systemd-resolved
-
-# Create a systemd service with embedded script logic (Workaround to make DNS work out of the box in WSL)
-RUN tee /etc/systemd/system/fix-resolv.service <<EOF
-[Unit]
-Description=Fix /etc/resolv.conf if empty or missing
-After=network.target
-[Service]
-Type=oneshot
-ExecStart=/bin/bash -c '\
-  if [[ ! -f "/etc/resolv.conf" || ! -s "/etc/resolv.conf" ]]; then \
-    echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1\nnameserver 169.254.169.254" > /etc/resolv.conf; \
-    echo "DNS configuration updated in /etc/resolv.conf."; \
-  else \
-    echo "/etc/resolv.conf already exists and is not empty. No changes made."; \
-  fi'
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable the service
-RUN systemctl enable fix-resolv.service
+RUN echo -e "[user]\ndefault=$USERNAME\n[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf
 
 # Install ArgoCD CLI
 RUN curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 && \
@@ -100,6 +76,10 @@ RUN sudo chsh -s $(which zsh)
 # Prepare NvChad (nvim)
 RUN echo "Installing NvChad plugins and tools..." && \
     nvim --headless "+Lazy! sync" +qa
+
+# Prepare Tmux
+ENV TMUX_PLUGIN_MANAGER_PATH="/home/${USERNAME}/.config/tmux/plugins"
+RUN sh ${TMUX_PLUGIN_MANAGER_PATH}/tpm/scripts/install_plugins.sh
 
 # Default command
 CMD ["/bin/zsh"]
