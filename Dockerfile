@@ -48,9 +48,11 @@ RUN dnf install -y \
 # Configure WSL settings
 RUN echo -e "[user]\ndefault=$USERNAME\n[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf
 
-# Install ArgoCD CLI
+# Install ArgoCD CLI, KubeCTX & KubeNS
 RUN curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 && \
-    chmod +x /usr/local/bin/argocd
+    curl -sSL -o /usr/local/bin/kubectx https://github.com/ahmetb/kubectx/releases/latest/download/kubectx && \
+    curl -sSL -o /usr/local/bin/kubens https://github.com/ahmetb/kubectx/releases/latest/download/kubens && \
+    chmod +x /usr/local/bin/{argocd,kubectx,kubens}
 
 # Create a new user and set it up
 RUN useradd -m -s /bin/zsh $USERNAME && \
