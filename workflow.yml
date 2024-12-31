@@ -1,0 +1,31 @@
+name: Build and Release WSL Fedora for DevOps
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger only for version tags (e.g., v1.0.0)
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+    # Step 1: Checkout the repository
+    - name: Checkout code
+      uses: actions/checkout@v3
+    # Step 2: Build the Docker image
+    - name: Build Docker image
+      run: docker build -t fedora-wsl .
+    # Step 3: Export the Docker container to a .tar file
+    - name: Export Docker container to .tar
+      run: |
+        docker create --name temp-fedora-wsl fedora-wsl
+        docker export temp-fedora-wsl > fedora-wsl.tar
+        docker rm temp-fedora-wsl
+    # Step 4: Upload the .tar file as a release asset
+    - name: Upload .tar as release asset
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./fedora-wsl.tar
+        asset_name: fedora-wsl.tar
+        asset_content_type: application/x-tar
