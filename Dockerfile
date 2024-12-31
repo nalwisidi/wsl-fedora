@@ -20,7 +20,8 @@ RUN curl -o /etc/yum.repos.d/hashicorp.repo https://rpm.releases.hashicorp.com/f
     curl -sSL -o /usr/local/bin/kubectx https://github.com/ahmetb/kubectx/releases/latest/download/kubectx && \
     curl -sSL -o /usr/local/bin/kubens https://github.com/ahmetb/kubectx/releases/latest/download/kubens && \
     chmod +x /usr/local/bin/{argocd,kubectx,kubens} && \
-    echo -e "[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf
+    echo -e "[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf && \
+    chsh -s $(which zsh)
 
 
 # Prepare Development Kit installation tool
