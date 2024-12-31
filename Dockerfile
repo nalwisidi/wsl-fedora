@@ -20,11 +20,7 @@ RUN curl -o /etc/yum.repos.d/hashicorp.repo https://rpm.releases.hashicorp.com/f
     curl -sSL -o /usr/local/bin/kubectx https://github.com/ahmetb/kubectx/releases/latest/download/kubectx && \
     curl -sSL -o /usr/local/bin/kubens https://github.com/ahmetb/kubectx/releases/latest/download/kubens && \
     chmod +x /usr/local/bin/{argocd,kubectx,kubens} && \
-    useradd -m -s /bin/zsh $USERNAME && \
-    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-    echo "$USERNAME:$PASSWORD" | chpasswd && \
-    echo -e "[user]\ndefault=$USERNAME\n[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf && \
-    find /home/${USERNAME}/ -mindepth 1 ! -name '.zprofile' -exec rm -f {} +
+    find /root -mindepth 1 ! -name '.zprofile' -exec rm -f {} +
 
 # Prepare Development Kit installation tool
 RUN DEST="/usr/local/bin/devkit" && tee $DEST <<EOF > /dev/null && dos2unix $DEST && chmod +x $DEST
@@ -49,11 +45,61 @@ fi
 EOF
 
 # Prepare Zsh
-RUN DEST="/home/${USERNAME}/.zsh" && tee $DEST <<EOF > /dev/null && dos2unix $DEST
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/nalwisidi/dotfiles/main/bootstrap.sh)"
-source ~/.zshrc
-EOF
+RUN DEST="/root/.zshrc" && tee $DEST <<EOF > /dev/null && dos2unix $DEST
+MARKER_FILE="/root/.wsl_welcome_shown"
+if [[ ! -f "\$MARKER_FILE" ]]; then
+  cat <<'POSTER'
+🎩 Welcome to Fedora DevOps Environment 🎩
 
-USER $USERNAME
+This is your fully-configured Fedora-based DevOps environment.
+- Built for productivity 🛠️
+- Preloaded with essential tools 🔧
+- Tailored for containerization 📦 and cloud-native development ☁️
+
+✨ Fedora DevOps Features:
+- A modern, developer-focused WSL environment.
+- Prebuilt DevOps tools for seamless operations.
+- Enhanced productivity with advanced terminal utilities.
+
+🚀 Introducing DevKit:
+DevKit is your all-in-one toolkit for developers. It simplifies your workflow with:
+- Popular programming languages (Python, Node.js, Ruby, etc.).
+- Essential build tools (CMake, GCC, Make).
+- Comprehensive database support (MySQL, PostgreSQL, SQLite, Redis).
+
+📜 Available Commands:
+    devkit install => Install all development tools
+    devkit remove  => Remove all installed tools
+
+💡 Tips:
+- Use `sudo dnf install <package>` to install additional tools.
+- Use `sudo dnf update` to keep your environment up-to-date.
+- Customize your environment in `~/.zshrc`.
+
+Enjoy your DevOps journey 🚀!
+POSTER
+  touch "\$MARKER_FILE"
+  # Create user
+  while true; do
+    read -p "Enter new UNIX username: " USERNAME
+    [[ -z "\$USERNAME" ]] && echo "USERNAME cannot be empty." && continue
+    id "\$USERNAME" &>/dev/null && echo "User \$USERNAME exists." && continue
+    useradd -m "\$USERNAME" && break || echo "Failed to create user. Try again."
+  done
+  while true; do
+    passwd "\$USERNAME" && echo "User \$USERNAME created successfully." && exit 0
+    echo "Password setup failed. Try again."
+  done
+  echo "\$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+  echo -e "[user]\ndefault=\$USERNAME\n[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf
+  # Preparing user environment
+  echo "Preparing your magic environment... 🪄✨"
+  su - \$USERNAME <<EOF
+  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/nalwisidi/dotfiles/main/bootstrap.sh)"
+  source ~/.zshrc
+  EOF
+  su - \$USERNAME
+  exit 0
+EOF
 
 CMD ["/bin/zsh"]
