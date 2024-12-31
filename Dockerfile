@@ -46,7 +46,7 @@ EOF
 
 # Prepare Zsh
 RUN DEST="/root/.zshrc" && tee $DEST <<EOF > /dev/null && dos2unix $DEST
-[ -f /root/.setup_user.sh ] && /root/.setup_user.sh
+[ -f /root/.setup_user.sh ] && /root/.setup_user.sh && exit 0
 EOF
 # User Setup Script
 RUN DEST="/root/.setup_user.sh" && tee $DEST <<EOF > /dev/null && dos2unix $DEST && chmod +x $DEST
@@ -100,7 +100,6 @@ POSTER
   su - "\$USERNAME" -c 'curl -fsSL https://raw.githubusercontent.com/nalwisidi/dotfiles/main/bootstrap.sh | sh'
   su - "\$USERNAME" --shell /bin/zsh -c "source ~/.zprofile && source ~/.config/zsh/.zshrc"
   su - "\$USERNAME" --shell /bin/zsh
-  kill -9 $$
 fi
 EOF
 
