@@ -6,7 +6,7 @@ ARG PASSWORD=password
 
 # Package groups
 ARG BASE_PACKAGES="git rsync wget curl vi vim neovim zsh zoxide fzf jq yq tar unzip zip zstd top btop lf stow tmux tree fastfetch dos2unix"
-ARG DEVOPS_TOOLS="podman kubectl k9s helm ansible terraform vault consul packer dnsmasq"
+ARG DEVOPS_TOOLS="docker podman kubectl k9s helm ansible terraform vault consul packer dnsmasq"
 ARG NETWORK_TOOLS="net-tools telnet traceroute nmap nc bind-utils iputils"
 ARG SYSTEM_TOOLS="systemd systemd-sysv systemd-container dbus passwd"
 
@@ -20,18 +20,18 @@ RUN curl -o /etc/yum.repos.d/hashicorp.repo https://rpm.releases.hashicorp.com/f
     curl -sSL -o /usr/local/bin/kubectx https://github.com/ahmetb/kubectx/releases/latest/download/kubectx && \
     curl -sSL -o /usr/local/bin/kubens https://github.com/ahmetb/kubectx/releases/latest/download/kubens && \
     chmod +x /usr/local/bin/{argocd,kubectx,kubens} && \
-    find /root -mindepth 1 ! -name '.zprofile' -exec rm -f {} +
+    echo -e "[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf
+
 
 # Prepare Development Kit installation tool
 RUN DEST="/usr/local/bin/devkit" && tee $DEST <<EOF > /dev/null && dos2unix $DEST && chmod +x $DEST
 #!/bin/bash
-DEV_TOOLS="python3 python3-pip nodejs npm java-21-openjdk ruby golang perl rust docker buildah git-lfs subversion mysql postgresql redis sqlite"
+DEV_TOOLS="python3 python3-pip nodejs npm java-21-openjdk ruby golang perl rust buildah git-lfs subversion mysql postgresql redis sqlite"
 EXTRA_TOOLS="cmake make autoconf automake libtool"
 if [[ "\$1" == "install" ]]; then
   echo "Installing tools..."
   sudo dnf update -y && sudo dnf group install -y "development-tools"
   sudo dnf install -y $DEV_TOOLS $EXTRA_TOOLS && sudo dnf clean all && sudo rm -rf /var/cache/dnf
-  sudo systemctl enable --now docker && sudo gpasswd -M root,$USER docker
   echo "Installation complete!"
 elif [[ "\$1" == "remove" ]]; then
   echo "Removing tools..."
@@ -46,6 +46,11 @@ EOF
 
 # Prepare Zsh
 RUN DEST="/root/.zshrc" && tee $DEST <<EOF > /dev/null && dos2unix $DEST
+[ -f /root/.setup_user.sh ] && /root/.setup_user.sh
+EOF
+# User Setup Script
+RUN DEST="/root/.setup_user.sh" && tee $DEST <<EOF > /dev/null && dos2unix $DEST && chmod +x $DEST
+#!/bin/bash
 MARKER_FILE="/root/.wsl_welcome_shown"
 if [[ ! -f "\$MARKER_FILE" ]]; then
   cat <<'POSTER'
@@ -72,14 +77,13 @@ DevKit is your all-in-one toolkit for developers. It simplifies your workflow wi
     devkit remove  => Remove all installed tools
 
 💡 Tips:
-- Use `sudo dnf install <package>` to install additional tools.
-- Use `sudo dnf update` to keep your environment up-to-date.
-- Customize your environment in `~/.zshrc`.
+- Use \`sudo dnf install <package>\` to install additional tools.
+- Use \`sudo dnf update\` to keep your environment up-to-date.
+- Customize your environment in \`~/.zshrc\`.
 
 Enjoy your DevOps journey 🚀!
 POSTER
   touch "\$MARKER_FILE"
-  # Create user
   while true; do
     read -p "Enter new UNIX username: " USERNAME
     [[ -z "\$USERNAME" ]] && echo "USERNAME cannot be empty." && continue
@@ -87,19 +91,17 @@ POSTER
     useradd -m "\$USERNAME" && break || echo "Failed to create user. Try again."
   done
   while true; do
-    passwd "\$USERNAME" && echo "User \$USERNAME created successfully." && exit 0
+    passwd "\$USERNAME" && echo "User \$USERNAME created successfully." && break
     echo "Password setup failed. Try again."
   done
   echo "\$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+  systemctl enable --now docker && sudo gpasswd -M root,$USERNAME docker
   echo -e "[user]\ndefault=\$USERNAME\n[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf
-  # Preparing user environment
-  echo "Preparing your magic environment... 🪄✨"
-  su - \$USERNAME <<EOF
-  sh -c "\$(curl -fsSL https://raw.githubusercontent.com/nalwisidi/dotfiles/main/bootstrap.sh)"
-  source ~/.zshrc
-  EOF
-  su - \$USERNAME
-  exit 0
+  su - "\$USERNAME" -c 'curl -fsSL https://raw.githubusercontent.com/nalwisidi/dotfiles/main/bootstrap.sh | sh'
+  su - "\$USERNAME" --shell /bin/zsh -c "source ~/.zprofile && source ~/.config/zsh/.zshrc"
+  su - "\$USERNAME" --shell /bin/zsh
+  kill -9 $$
+fi
 EOF
 
 CMD ["/bin/zsh"]
