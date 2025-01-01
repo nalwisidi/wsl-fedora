@@ -1,61 +1,77 @@
 # Define variables
 $RepoOwner = "nalwisidi"
 $RepoName = "dvp-fedora"
-$ReleaseTag = "latest"
 $DistroName = "Fedora"
 $InstallPath = "C:\WSL\$DistroName"
 $OutputFile = "dvp-fedora.tar"
 $ChunkPattern = "dvp-fedora-part-*"
 
-# Step 1: Fetch chunk filenames dynamically
+# Step 1: Fetch the latest release
+Write-Host "Fetching the latest release..."
+try {
+  $LatestRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
+  $ReleaseTag = $LatestRelease.tag_name
+  Write-Host "Latest release tag: $ReleaseTag"
+} catch {
+  Write-Host "Failed to fetch the latest release. Exiting..."
+  exit 1
+}
+
+# Step 2: Fetch chunk filenames dynamically
 Write-Host "Fetching chunk filenames dynamically..."
-$ChunkList = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/tags/$ReleaseTag" `
+try {
+  $ChunkList = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/tags/$ReleaseTag" `
     | Select-Object -ExpandProperty assets `
     | Where-Object { $_.name -like $ChunkPattern } `
     | Select-Object -ExpandProperty browser_download_url
-
-if (-not $ChunkList) {
+  if (-not $ChunkList) {
     Write-Host "No chunks found. Exiting..."
     exit 1
+  }
+} catch {
+  Write-Host "Failed to fetch chunk filenames. Exiting..."
+  exit 1
 }
 
-# Step 2: Download all chunks
+# Step 3: Download all chunks in parallel
 Write-Host "Downloading WSL tarball chunks..."
+$DownloadJobs = @()
 foreach ($Url in $ChunkList) {
-    $FileName = ($Url -split '/')[-1]
-    Write-Host "Downloading $FileName..."
-    Invoke-WebRequest -Uri $Url -OutFile $FileName
+  $FileName = ($Url -split '/')[-1]
+  $DownloadJobs += Start-Job -ScriptBlock {
+    Invoke-WebRequest -Uri $using:Url -OutFile $using:FileName
+  }
 }
+$DownloadJobs | Wait-Job | ForEach-Object { Receive-Job -Job $_ }
 
-# Step 3: Reassemble the chunks
+# Step 4: Reassemble the chunks
 Write-Host "Reassembling chunks into $OutputFile..."
-Get-Content ($ChunkList | ForEach-Object { ($_.Split('/')[-1]) }) | Set-Content $OutputFile
+Get-Content (Get-ChildItem -Filter "dvp-fedora-part-*" | Sort-Object Name) | Set-Content $OutputFile
 
-# Step 4: Create a folder for the WSL distro
+# Step 5: Create a folder for the WSL distro
 Write-Host "Creating installation directory..."
 New-Item -ItemType Directory -Force -Path $InstallPath
 
-# Step 5: Register the WSL distro
+# Step 6: Register the WSL distro
 Write-Host "Registering WSL distro..."
 wsl --import $DistroName $InstallPath $OutputFile --version 2
 
-# Step 6: Clean up the downloaded chunks and tarball
+# Step 7: Clean up the downloaded chunks and tarball
 Write-Host "Cleaning up temporary files..."
-Remove-Item -Force ($ChunkList | ForEach-Object { ($_.Split('/')[-1]) })
-Remove-Item -Force $OutputFile
+try {
+  Remove-Item -Force "dvp-fedora-part-*"
+  Remove-Item -Force $OutputFile
+} catch {
+  Write-Host "Failed to clean up some temporary files."
+}
 
-# Step 7: Add profile to Windows Terminal
+# Step 8: Add profile to Windows Terminal
 Write-Host "Adding Windows Terminal profile..."
 $WTSettingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
-
-# Check if the settings file exists
 if (Test-Path $WTSettingsPath) {
-  # Read the settings JSON
   $WTSettings = Get-Content $WTSettingsPath | ConvertFrom-Json
-  # Check if the profile already exists
   $ProfileExists = $WTSettings.profiles.list | Where-Object { $_.name -eq $DistroName }
   if (-not $ProfileExists) {
-    # Create the new profile without a GUID
     $NewProfile = @{
       name              = $DistroName
       commandline       = "wsl.exe -d $DistroName"
@@ -63,9 +79,7 @@ if (Test-Path $WTSettingsPath) {
       startingDirectory = "~"
       hidden            = $false
     }
-    # Add the new profile to the profiles list
     $WTSettings.profiles.list += $NewProfile
-    # Save the updated settings back to the file
     $WTSettings | ConvertTo-Json -Depth 10 | Set-Content $WTSettingsPath -Force
     Write-Host "Profile for $DistroName added to Windows Terminal."
   } else {
