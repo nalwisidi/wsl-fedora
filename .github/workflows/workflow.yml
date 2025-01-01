@@ -36,6 +36,8 @@ jobs:
     # Step 6: Upload chunks to the GitHub release
     - name: Upload chunks as release assets
       shell: bash
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Use the built-in GitHub token
       run: |
         for file in dvp-fedora-part-*; do
           echo "Uploading $file"
