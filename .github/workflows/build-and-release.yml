@@ -28,26 +28,53 @@ jobs:
         docker create --name dvp_fedora_container dvp-fedora
         docker export dvp_fedora_container > dvp-fedora.tar
         docker rm dvp_fedora_container
+        echo "Original size of dvp-fedora.tar:"
+        du -sh dvp-fedora.tar
 
-    # Step 4: Split the .tar file into chunks
-    - name: Split the .tar file into smaller chunks
-      run: split -b 1900M dvp-fedora.tar dvp-fedora-part-
+    # Step 4: Calculate split size dynamically
+    - name: Calculate split size
+      id: calculate_split_size
+      run: |
+        MAX_SIZE=2000000000  # 2 GB in bytes
+        FILE_SIZE=$(stat --printf="%s" dvp-fedora.tar)
+        if [ "$FILE_SIZE" -le "$MAX_SIZE" ]; then
+          echo "File size is within the limit, no splitting required."
+          echo "split_size=0" >> $GITHUB_ENV
+        else
+          SPLIT_COUNT=$(( ($FILE_SIZE + $MAX_SIZE - 1) / $MAX_SIZE ))  # Round up
+          SPLIT_SIZE=$(( $FILE_SIZE / $SPLIT_COUNT ))  # Evenly distribute
+          echo "Split count: $SPLIT_COUNT"
+          echo "Split size: $SPLIT_SIZE bytes"
+          echo "split_size=$SPLIT_SIZE" >> $GITHUB_ENV
+        fi
 
-    # Step 5: Install GitHub CLI (if not already available)
+    # Step 5: Split the tar file if needed
+    - name: Split tar file
+      if: env.split_size != '0'
+      run: |
+        split -b $(( ${{ env.split_size }} )) dvp-fedora.tar dvp-fedora-part-
+        echo "Split into $(ls dvp-fedora-part-* | wc -l) parts."
+
+    # Step 6: Install GitHub CLI (if not already available)
     - name: Install GitHub CLI
       run: sudo apt-get install gh -y
 
-    # Step 6: Upload chunks to the GitHub release
-    - name: Upload chunks as release assets
-      shell: bash
+    # Step 7: Upload chunks to the GitHub release
+    - name: Upload release assets
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        for file in dvp-fedora-part-*; do
-          echo "Uploading $file"
-          gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
-        done
+        if ls dvp-fedora-part-* 1> /dev/null 2>&1; then
+          echo "Uploading split files..."
+          for file in dvp-fedora-part-*; do
+            echo "Uploading $file"
+            gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
+          done
+        else
+          echo "Uploading single tar file..."
+          gh release upload ${{ github.event.release.tag_name }} dvp-fedora.tar --clobber
+        fi
 
-    # Step 7: Clean up temporary files
+    # Step 8: Clean up temporary files
     - name: Cleanup temporary files
       run: rm -f dvp-fedora-part-* dvp-fedora.tar

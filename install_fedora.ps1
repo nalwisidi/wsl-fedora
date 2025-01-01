@@ -33,13 +33,10 @@ try {
   exit 1
 }
 
-# Step 3: Download all chunks with real-time progress
-Write-Host "Downloading WSL tarball chunks..."
+# Step 3: Download all chunks using curl
+Write-Host "Downloading WSL tarball chunks using curl..."
 $TotalChunks = $ChunkList.Count
 $CurrentChunk = 0
-
-Add-Type -AssemblyName System.Net.Http
-$HttpClient = New-Object System.Net.Http.HttpClient
 
 foreach ($Url in $ChunkList) {
   $CurrentChunk++
@@ -47,51 +44,72 @@ foreach ($Url in $ChunkList) {
 
   Write-Host "Downloading $FileName ($CurrentChunk of $TotalChunks)..."
 
-  # Open file stream for writing
-  $FileStream = [System.IO.File]::OpenWrite($FileName)
-  $HttpResponse = $HttpClient.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).Result
-  $ContentStream = $HttpResponse.Content.ReadAsStreamAsync().Result
-  $TotalBytes = $HttpResponse.Content.Headers.ContentLength
-  $Buffer = New-Object byte[] 81920
-  $BytesRead = 0
-  $TotalRead = 0
-
-  while (($BytesRead = $ContentStream.Read($Buffer, 0, $Buffer.Length)) -gt 0) {
-    $FileStream.Write($Buffer, 0, $BytesRead)
-    $TotalRead += $BytesRead
-    $PercentComplete = [math]::Round(($TotalRead / $TotalBytes) * 100, 2)
-    Write-Progress -Activity "Downloading $FileName" `
-                   -Status "$PercentComplete% complete" `
-                   -PercentComplete $PercentComplete
+  # Download using curl
+  $CurlCommand = "curl -L --progress-bar -o $FileName $Url"
+  Write-Host "Executing: $CurlCommand"
+  Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $CurlCommand -Wait
+  if (!(Test-Path $FileName)) {
+    Write-Host "Download failed for $FileName. Exiting..."
+    exit 1
   }
-
-  $FileStream.Close()
   Write-Host "$FileName downloaded successfully."
 }
 
-Write-Progress -Activity "Downloading Chunks" -Status "Download Complete" -Completed
-
 # Step 4: Reassemble the chunks
 Write-Host "Reassembling chunks into $OutputFile..."
-Get-Content (Get-ChildItem -Filter "dvp-fedora-part-*" | Sort-Object Name) | Set-Content $OutputFile
+try {
+  Get-Content (Get-ChildItem -Filter "dvp-fedora-part-*" | Sort-Object Name) | Set-Content $OutputFile
+  Write-Host "Chunks reassembled successfully."
+} catch {
+  Write-Host "Error reassembling chunks. Cleaning up..."
+  Remove-Item -Force "dvp-fedora-part-*" -ErrorAction SilentlyContinue
+  exit 1
+}
 
 # Step 5: Create a folder for the WSL distro
 Write-Host "Creating installation directory..."
 New-Item -ItemType Directory -Force -Path $InstallPath
 
 # Step 6: Register the WSL distro
-Write-Host "Registering WSL distro..."
-wsl --import $DistroName $InstallPath $OutputFile --version 2
+Write-Host "Registering the WSL distro..."
+try {
+  wsl --import $DistroName $InstallPath $OutputFile --version 2
+  Write-Host "WSL distro registered successfully."
+} catch {
+  Write-Host "Failed to register the WSL distro. Cleaning up..."
+  Remove-Item -Force $OutputFile -ErrorAction SilentlyContinue
+  Remove-Item -Force "dvp-fedora-part-*" -ErrorAction SilentlyContinue
+  exit 1
+}
 
 # Step 7: Clean up the downloaded chunks and tarball
 Write-Host "Cleaning up temporary files..."
-Remove-Item -Force "dvp-fedora-part-*"
-Remove-Item -Force $OutputFile
+Remove-Item -Force "dvp-fedora-part-*" -ErrorAction SilentlyContinue
+Remove-Item -Force $OutputFile -ErrorAction SilentlyContinue
 
 # Step 8: Add profile to Windows Terminal
 Write-Host "Adding Windows Terminal profile..."
-$WTSettingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
-if (Test-Path $WTSettingsPath) {
+
+# Locate the Windows Terminal settings.json file dynamically
+$WTBasePath = Join-Path $env:LOCALAPPDATA "Packages"
+$WTPath = Get-ChildItem -Path $WTBasePath -Directory -Filter "Microsoft.WindowsTerminal*" | Select-Object -First 1
+
+if ($WTPath) {
+  $WTSettingsPath = Join-Path $WTPath.FullName "LocalState\settings.json"
+  Write-Host "Windows Terminal settings.json located at: $WTSettingsPath"
+} else {
+  Write-Host "Windows Terminal installation not found. Please ensure Windows Terminal is installed."
+  exit 1
+}
+
+# Ensure the settings.json file exists
+if (!(Test-Path $WTSettingsPath)) {
+  Write-Host "Windows Terminal settings.json not found. Please ensure the application has been run at least once."
+  exit 1
+}
+
+# Update the Windows Terminal settings
+try {
   $WTSettings = Get-Content $WTSettingsPath | ConvertFrom-Json
   $ProfileExists = $WTSettings.profiles.list | Where-Object { $_.name -eq $DistroName }
   if (-not $ProfileExists) {
@@ -108,8 +126,8 @@ if (Test-Path $WTSettingsPath) {
 } else {
     Write-Host "Profile for $DistroName already exists in Windows Terminal."
   }
-} else {
-  Write-Host "Windows Terminal settings file not found. Please ensure Windows Terminal is installed."
+} catch {
+  Write-Host "Failed to update Windows Terminal settings."
 }
 
 Write-Host "Installation complete! Run 'wsl -d $DistroName' to start."
