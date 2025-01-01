@@ -18,7 +18,7 @@ This project provides a fully-configured Fedora-based DevOps environment that ca
 To install the Fedora DevOps Environment in WSL, simply run the following command in PowerShell:
 
 ```powershell
-powershell -Command "& { (Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/nalwisidi/dvp-install/main/install_fedora.ps1').Content | powershell -ExecutionPolicy Bypass - }"
+powershell -Command "& { (Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/nalwisidi/dvp-fedora/main/install_fedora.ps1').Content | powershell -ExecutionPolicy Bypass - }"
 ```
 
 ---
