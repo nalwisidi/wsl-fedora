@@ -9,6 +9,10 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
 
+    # Grant write access to release assets
+    permissions:
+      contents: write
+
     steps:
     # Step 1: Checkout code
     - name: Checkout code
@@ -37,7 +41,7 @@ jobs:
     - name: Upload chunks as release assets
       shell: bash
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         for file in dvp-fedora-part-*; do
           echo "Uploading $file"
