@@ -1,7 +1,7 @@
 # Define variables
 $RepoOwner = "nalwisidi"
 $RepoName = "dvp-fedora"
-$DistroName = "Fedora"
+$DistroName = "FedoraWSL"
 $InstallPath = "C:\WSL\$DistroName"
 $OutputFile = "dvp-fedora.tar"
 $ChunkPattern = "dvp-fedora-part-*"
