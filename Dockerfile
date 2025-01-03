@@ -4,7 +4,7 @@ FROM fedora:latest
 ARG BASE_PACKAGES="git rsync wget curl vi vim neovim zsh zoxide fzf jq yq tar unzip zip zstd top btop lf stow tmux tree fastfetch dos2unix"
 ARG DEVOPS_TOOLS="docker podman kubectl k9s helm ansible terraform vault consul packer dnsmasq"
 ARG NETWORK_TOOLS="net-tools telnet traceroute nmap nc bind-utils iputils"
-ARG SYSTEM_TOOLS="systemd systemd-sysv systemd-container dbus passwd cmake make autoconf automake libtool"
+# ARG SYSTEM_TOOLS="systemd systemd-sysv systemd-container dbus passwd cmake make autoconf automake libtool"
 
 RUN curl -o /etc/yum.repos.d/hashicorp.repo https://rpm.releases.hashicorp.com/fedora/hashicorp.repo && \
     dnf copr enable -y emanuelec/k9s && \
