@@ -6,63 +6,45 @@ $InstallPath = "C:\WSL\$DistroName"
 $OutputFile = "dvp-fedora.tar.xz"
 $ChunkPattern = "dvp-fedora.tar.xz.part-*"
 
-# Step 1: Fetch the latest release
+# Fetch the latest release
 Write-Host "Fetching the latest release..." -ForegroundColor Cyan
 try {
     $LatestRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
     $ReleaseTag = $LatestRelease.tag_name
+    $ReleaseAssets = $LatestRelease.assets
     Write-Host "Latest release tag: $ReleaseTag" -ForegroundColor Green
 } catch {
-    Write-Host "Failed to fetch the latest release. Exiting..." -ForegroundColor Red
+    Write-Host "Error: Failed to fetch the latest release." -ForegroundColor Red
     exit 1
 }
 
-# Step 2: Fetch filenames (check for single tarball first)
-Write-Host "Checking for single tarball in the release assets..." -ForegroundColor Cyan
-try {
-    $ReleaseAssets = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/tags/$ReleaseTag" `
-        | Select-Object -ExpandProperty assets
-    $SingleTarball = $ReleaseAssets | Where-Object { $_.name -eq $OutputFile } | Select-Object -ExpandProperty browser_download_url
-    if ($SingleTarball) {
-        Write-Host "Single tarball found: $OutputFile" -ForegroundColor Green
-        Start-BitsTransfer -Source $SingleTarball -Destination $OutputFile -Description "Downloading single tarball"
-        goto ReassembleAndVerify
+# Check for single tarball or chunks
+Write-Host "Checking for release assets..." -ForegroundColor Cyan
+$SingleTarball = $ReleaseAssets | Where-Object { $_.name -eq $OutputFile } | Select-Object -ExpandProperty browser_download_url -ErrorAction SilentlyContinue
+$ChunkList = $ReleaseAssets | Where-Object { $_.name -like $ChunkPattern } | Select-Object -ExpandProperty browser_download_url -ErrorAction SilentlyContinue
+
+if ($SingleTarball) {
+    Write-Host "Single tarball found: $OutputFile" -ForegroundColor Green
+    Write-Host "Downloading $OutputFile..." -ForegroundColor Cyan
+    Start-BitsTransfer -Source $SingleTarball -Destination $OutputFile -Description "Downloading single tarball"
+} elseif ($ChunkList) {
+    Write-Host "Chunks found. Downloading and reassembling..." -ForegroundColor Cyan
+    $TotalChunks = $ChunkList.Count
+    $CurrentChunk = 0
+
+    foreach ($Url in $ChunkList) {
+        $CurrentChunk++
+        $FileName = ($Url -split '/')[-1]
+        Write-Host "Downloading $FileName ($CurrentChunk of $TotalChunks)..."
+        Start-BitsTransfer -Source $Url -Destination $FileName -Description "Downloading $FileName"
     }
 
-    # If no single tarball, check for chunks
-    Write-Host "Fetching chunk filenames dynamically..." -ForegroundColor Cyan
-    $ChunkList = $ReleaseAssets | Where-Object { $_.name -like $ChunkPattern } | Select-Object -ExpandProperty browser_download_url
-    if (-not $ChunkList) {
-        Write-Host "No chunks found. Exiting..." -ForegroundColor Red
-        exit 1
-    }
-} catch {
-    Write-Host "Failed to fetch filenames. Exiting..." -ForegroundColor Red
-    exit 1
-}
-
-# Step 3: Download chunks if present
-Write-Host "Downloading WSL tarball chunks..." -ForegroundColor Cyan
-$TotalChunks = $ChunkList.Count
-$ProgressIndex = 0
-
-foreach ($Url in $ChunkList) {
-    $ProgressIndex++
-    $FileName = ($Url -split '/')[-1]
-    Write-Host "Downloading $FileName ($ProgressIndex of $TotalChunks)..."
-    Start-BitsTransfer -Source $Url -Destination $FileName -Description "Downloading $FileName"
-}
-
-Write-Progress -Activity "Downloading Chunks" -Status "All downloads complete" -Completed
-
-# Step 4: Reassemble chunks into a single file
-:ReassembleAndVerify
-if (-not (Test-Path $OutputFile)) {
     Write-Host "Reassembling chunks into $OutputFile..." -ForegroundColor Cyan
     try {
         $ChunkFiles = Get-ChildItem -Filter $ChunkPattern | Sort-Object Name
         $FileStream = [System.IO.File]::Create($OutputFile)
         $BufferSize = 81920
+
         foreach ($Chunk in $ChunkFiles) {
             $ChunkStream = [System.IO.File]::OpenRead($Chunk.FullName)
             $Buffer = New-Object Byte[] $BufferSize
@@ -74,12 +56,15 @@ if (-not (Test-Path $OutputFile)) {
         $FileStream.Close()
         Write-Host "Chunks successfully reassembled into $OutputFile." -ForegroundColor Green
     } catch {
-        Write-Host "Failed to reassemble chunks. Exiting..." -ForegroundColor Red
+        Write-Host "Error: Failed to reassemble chunks." -ForegroundColor Red
         exit 1
     }
+} else {
+    Write-Host "Error: No assets found in the release." -ForegroundColor Red
+    exit 1
 }
 
-# Step 5: Verify the hash of the assembled file
+# Verify hash of the tarball
 Write-Host "Verifying hash of $OutputFile..." -ForegroundColor Cyan
 try {
     $HashUrl = "https://github.com/$RepoOwner/$RepoName/releases/download/$ReleaseTag/$OutputFile.sha256"
@@ -89,31 +74,36 @@ try {
     if ($ExpectedHash -eq $ActualHash) {
         Write-Host "Hash verification successful!" -ForegroundColor Green
     } else {
-        Write-Host "Hash verification failed. Expected: $ExpectedHash, Got: $ActualHash. Exiting..." -ForegroundColor Red
+        Write-Host "Error: Hash verification failed. Expected: $ExpectedHash, Got: $ActualHash." -ForegroundColor Red
         exit 1
     }
 } catch {
-    Write-Host "Failed to verify hash. Exiting..." -ForegroundColor Red
+    Write-Host "Error: Failed to verify hash." -ForegroundColor Red
     exit 1
 }
 
-# Step 6: Create a folder for the WSL distro
+# Create the installation directory
 Write-Host "Creating installation directory..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $InstallPath
 
-# Step 7: Register the WSL distro
+# Register the WSL distro
 Write-Host "Registering WSL distro..." -ForegroundColor Cyan
-wsl --import $DistroName $InstallPath $OutputFile --version 2
+try {
+    wsl --import $DistroName $InstallPath $OutputFile --version 2
+    Write-Host "WSL distro registered successfully!" -ForegroundColor Green
+} catch {
+    Write-Host "Error: Failed to register the WSL distro." -ForegroundColor Red
+    exit 1
+}
 
-# Step 8: Clean up temporary files
+# Clean up temporary files
 Write-Host "Cleaning up temporary files..." -ForegroundColor Cyan
-Remove-Item -Force $ChunkPattern
+Remove-Item -Force $ChunkPattern -ErrorAction SilentlyContinue
 Remove-Item -Force $OutputFile
 Remove-Item -Force "$OutputFile.sha256"
-Remove-Item -Force "$OutputFile.parts.sha256"
 
-# Step 9: Add profile to Windows Terminal
-Write-Host "Adding Windows Terminal profile..." -ForegroundColor Cyan
+# Add profile to Windows Terminal
+Write-Host "Adding profile to Windows Terminal..." -ForegroundColor Cyan
 $WTSettingsPath = Join-Path $env:LOCALAPPDATA "Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
 if (Test-Path $WTSettingsPath) {
     $WTSettings = Get-Content $WTSettingsPath | ConvertFrom-Json
@@ -128,12 +118,12 @@ if (Test-Path $WTSettingsPath) {
         }
         $WTSettings.profiles.list += $NewProfile
         $WTSettings | ConvertTo-Json -Depth 10 | Set-Content $WTSettingsPath -Force
-        Write-Host "Profile for $DistroName added to Windows Terminal." -ForegroundColor Green
+        Write-Host "Profile added to Windows Terminal!" -ForegroundColor Green
     } else {
-        Write-Host "Profile for $DistroName already exists in Windows Terminal." -ForegroundColor Yellow
+        Write-Host "Profile already exists in Windows Terminal." -ForegroundColor Yellow
     }
 } else {
-    Write-Host "Windows Terminal settings file not found. Skipping profile addition." -ForegroundColor Yellow
+    Write-Host "Windows Terminal settings.json not found. Skipping profile addition." -ForegroundColor Yellow
 }
 
 Write-Host "Installation complete! Run 'wsl -d $DistroName' to start." -ForegroundColor Green
