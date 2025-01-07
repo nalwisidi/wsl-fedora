@@ -6,15 +6,14 @@ on:
       - published
 
 jobs:
-  build-and-publish:
+  build-and-release:
     runs-on: ubuntu-latest
 
-    # Grant write access to release assets
     permissions:
-      contents: write
+      contents: write  # Required for uploading release assets
 
     steps:
-    # Step 1: Checkout code
+    # Step 1: Checkout the repository
     - name: Checkout code
       uses: actions/checkout@v3
 
@@ -22,59 +21,61 @@ jobs:
     - name: Build Docker image
       run: docker build -t dvp-fedora .
 
-    # Step 3: Export Docker container to .tar
-    - name: Export Docker container to .tar
+    # Step 3: Export Docker container to tar
+    - name: Export container to tar
       run: |
         docker create --name dvp_fedora_container dvp-fedora
         docker export dvp_fedora_container > dvp-fedora.tar
         docker rm dvp_fedora_container
-        echo "Original size of dvp-fedora.tar:"
-        du -sh dvp-fedora.tar
+        echo "Exported tar size: $(du -sh dvp-fedora.tar)"
 
-    # Step 4: Calculate split size dynamically
+    # Step 4: Compress tar file using xz
+    - name: Compress tar file
+      run: |
+        xz -9 -T0 dvp-fedora.tar
+        echo "Compressed file size: $(du -sh dvp-fedora.tar.xz)"
+
+    # Step 5: Generate SHA256 hash
+    - name: Generate SHA256 hash
+      run: sha256sum dvp-fedora.tar.xz > dvp-fedora.tar.xz.sha256 && cat dvp-fedora.tar.xz.sha256
+
+    # Step 6: Calculate split size dynamically
     - name: Calculate split size
-      id: calculate_split_size
       run: |
-        MAX_SIZE=2000000000  # 2 GB in bytes
-        FILE_SIZE=$(stat --printf="%s" dvp-fedora.tar)
-        if [ "$FILE_SIZE" -le "$MAX_SIZE" ]; then
-          echo "File size is within the limit, no splitting required."
-          echo "split_size=0" >> $GITHUB_ENV
-        else
-          SPLIT_COUNT=$(( ($FILE_SIZE + $MAX_SIZE - 1) / $MAX_SIZE ))  # Round up
-          SPLIT_SIZE=$(( $FILE_SIZE / $SPLIT_COUNT ))  # Evenly distribute
-          echo "Split count: $SPLIT_COUNT"
-          echo "Split size: $SPLIT_SIZE bytes"
-          echo "split_size=$SPLIT_SIZE" >> $GITHUB_ENV
-        fi
+        MAX_SIZE=2000000000  # 2GB
+        FILE_SIZE=$(stat --printf="%s" dvp-fedora.tar.xz)
+        [[ $FILE_SIZE -le $MAX_SIZE ]] && echo "split_required=false" >> $GITHUB_ENV || {
+          echo "split_required=true" >> $GITHUB_ENV
+          echo "split_size=$(( ($FILE_SIZE + $MAX_SIZE - 1) / ($FILE_SIZE / $MAX_SIZE) ))" >> $GITHUB_ENV
+        }
 
-    # Step 5: Split the tar file if needed
+    # Step 7: Split tar file if required
     - name: Split tar file
-      if: env.split_size != '0'
+      if: env.split_required == 'true'
       run: |
-        split -b $(( ${{ env.split_size }} )) dvp-fedora.tar dvp-fedora-part-
-        echo "Split into $(ls dvp-fedora-part-* | wc -l) parts."
+        split -b $(( ${{ env.split_size }} )) dvp-fedora.tar.xz dvp-fedora.tar.xz.part-
+        echo "Split into $(ls dvp-fedora.tar.xz.part-* | wc -l) parts."
 
-    # Step 6: Install GitHub CLI (if not already available)
-    - name: Install GitHub CLI
-      run: sudo apt-get install gh -y
+    # Step 8: Generate SHA256 hashes for split parts
+    - name: Generate hashes for split parts
+      if: env.split_required == 'true'
+      run: sha256sum dvp-fedora.tar.xz.part-* > dvp-fedora.tar.xz.parts.sha256 && cat dvp-fedora.tar.xz.parts.sha256
 
-    # Step 7: Upload chunks to the GitHub release
+    # Step 9: Upload release assets
     - name: Upload release assets
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        if ls dvp-fedora-part-* 1> /dev/null 2>&1; then
+        if ls dvp-fedora.tar.xz.part-* 1> /dev/null 2>&1; then
           echo "Uploading split files..."
-          for file in dvp-fedora-part-*; do
-            echo "Uploading $file"
-            gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
-          done
+          for file in dvp-fedora.tar.xz.part-*; do gh release upload ${{ github.event.release.tag_name }} "$file" --clobber; done
+          gh release upload ${{ github.event.release.tag_name }} dvp-fedora.tar.xz.parts.sha256 --clobber
         else
-          echo "Uploading single tar file..."
-          gh release upload ${{ github.event.release.tag_name }} dvp-fedora.tar --clobber
+          echo "Uploading single file..."
+          gh release upload ${{ github.event.release.tag_name }} dvp-fedora.tar.xz --clobber
+          gh release upload ${{ github.event.release.tag_name }} dvp-fedora.tar.xz.sha256 --clobber
         fi
 
-    # Step 8: Clean up temporary files
-    - name: Cleanup temporary files
-      run: rm -f dvp-fedora-part-* dvp-fedora.tar
+    # Step 10: Cleanup
+    - name: Cleanup
+      run: rm -f dvp-fedora.tar dvp-fedora.tar.xz dvp-fedora.tar.xz.part-* *.sha256
