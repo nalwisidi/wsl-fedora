@@ -17,23 +17,31 @@ try {
     exit 1
 }
 
-# Step 2: Fetch chunk filenames dynamically
-Write-Host "Fetching chunk filenames dynamically..." -ForegroundColor Cyan
+# Step 2: Fetch filenames (check for single tarball first)
+Write-Host "Checking for single tarball in the release assets..." -ForegroundColor Cyan
 try {
-    $ChunkList = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/tags/$ReleaseTag" `
-        | Select-Object -ExpandProperty assets `
-        | Where-Object { $_.name -like $ChunkPattern } `
-        | Select-Object -ExpandProperty browser_download_url
+    $ReleaseAssets = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/tags/$ReleaseTag" `
+        | Select-Object -ExpandProperty assets
+    $SingleTarball = $ReleaseAssets | Where-Object { $_.name -eq $OutputFile } | Select-Object -ExpandProperty browser_download_url
+    if ($SingleTarball) {
+        Write-Host "Single tarball found: $OutputFile" -ForegroundColor Green
+        Start-BitsTransfer -Source $SingleTarball -Destination $OutputFile -Description "Downloading single tarball"
+        goto ReassembleAndVerify
+    }
+
+    # If no single tarball, check for chunks
+    Write-Host "Fetching chunk filenames dynamically..." -ForegroundColor Cyan
+    $ChunkList = $ReleaseAssets | Where-Object { $_.name -like $ChunkPattern } | Select-Object -ExpandProperty browser_download_url
     if (-not $ChunkList) {
         Write-Host "No chunks found. Exiting..." -ForegroundColor Red
         exit 1
     }
 } catch {
-    Write-Host "Failed to fetch chunk filenames. Exiting..." -ForegroundColor Red
+    Write-Host "Failed to fetch filenames. Exiting..." -ForegroundColor Red
     exit 1
 }
 
-# Step 3: Download all chunks with progress bar
+# Step 3: Download chunks if present
 Write-Host "Downloading WSL tarball chunks..." -ForegroundColor Cyan
 $TotalChunks = $ChunkList.Count
 $ProgressIndex = 0
@@ -42,59 +50,34 @@ foreach ($Url in $ChunkList) {
     $ProgressIndex++
     $FileName = ($Url -split '/')[-1]
     Write-Host "Downloading $FileName ($ProgressIndex of $TotalChunks)..."
-
-    # Using Start-BitsTransfer for faster and reliable downloads
-    try {
-        Start-BitsTransfer -Source $Url -Destination $FileName -Description "Downloading $FileName" -ErrorAction Stop
-        Write-Progress -Activity "Downloading Chunks" -Status "$ProgressIndex of $TotalChunks completed" `
-                        -PercentComplete (($ProgressIndex / $TotalChunks) * 100)
-    } catch {
-        Write-Host "Failed to download $FileName. Exiting..." -ForegroundColor Red
-        exit 1
-    }
+    Start-BitsTransfer -Source $Url -Destination $FileName -Description "Downloading $FileName"
 }
 
 Write-Progress -Activity "Downloading Chunks" -Status "All downloads complete" -Completed
 
-# Step 4: Reassemble the chunks
-Write-Host "Reassembling chunks into $OutputFile..." -ForegroundColor Cyan
-try {
-    $TotalSize = 0
-    $ChunkFiles = Get-ChildItem -Filter $ChunkPattern | Sort-Object Name
-    $FileStream = [System.IO.File]::Create($OutputFile)
-    $BufferSize = 81920
-    $ProgressIndex = 0
-
-    foreach ($Chunk in $ChunkFiles) {
-        $ChunkSize = (Get-Item $Chunk.FullName).Length
-        $TotalSize += $ChunkSize
-    }
-
-    foreach ($Chunk in $ChunkFiles) {
-        $ProgressIndex++
-        $ChunkStream = [System.IO.File]::OpenRead($Chunk.FullName)
-        $BytesRead = 0
-        $Buffer = New-Object Byte[] $BufferSize
-
-        while (($BytesRead = $ChunkStream.Read($Buffer, 0, $BufferSize)) -gt 0) {
-            $FileStream.Write($Buffer, 0, $BytesRead)
-            $PercentComplete = [math]::Round(($FileStream.Length / $TotalSize) * 100, 2)
-            Write-Progress -Activity "Reassembling Chunks" `
-                            -Status "Combining chunk $ProgressIndex of $($ChunkFiles.Count)" `
-                            -PercentComplete $PercentComplete
+# Step 4: Reassemble chunks into a single file
+:ReassembleAndVerify
+if (-not (Test-Path $OutputFile)) {
+    Write-Host "Reassembling chunks into $OutputFile..." -ForegroundColor Cyan
+    try {
+        $ChunkFiles = Get-ChildItem -Filter $ChunkPattern | Sort-Object Name
+        $FileStream = [System.IO.File]::Create($OutputFile)
+        $BufferSize = 81920
+        foreach ($Chunk in $ChunkFiles) {
+            $ChunkStream = [System.IO.File]::OpenRead($Chunk.FullName)
+            $Buffer = New-Object Byte[] $BufferSize
+            while (($BytesRead = $ChunkStream.Read($Buffer, 0, $BufferSize)) -gt 0) {
+                $FileStream.Write($Buffer, 0, $BytesRead)
+            }
+            $ChunkStream.Close()
         }
-
-        $ChunkStream.Close()
+        $FileStream.Close()
+        Write-Host "Chunks successfully reassembled into $OutputFile." -ForegroundColor Green
+    } catch {
+        Write-Host "Failed to reassemble chunks. Exiting..." -ForegroundColor Red
+        exit 1
     }
-
-    $FileStream.Close()
-    Write-Host "Chunks successfully reassembled into $OutputFile." -ForegroundColor Green
-} catch {
-    Write-Host "Failed to reassemble chunks. Exiting..." -ForegroundColor Red
-    exit 1
 }
-
-Write-Progress -Activity "Reassembling Chunks" -Status "Reassembly Complete" -Completed
 
 # Step 5: Verify the hash of the assembled file
 Write-Host "Verifying hash of $OutputFile..." -ForegroundColor Cyan
@@ -122,11 +105,12 @@ New-Item -ItemType Directory -Force -Path $InstallPath
 Write-Host "Registering WSL distro..." -ForegroundColor Cyan
 wsl --import $DistroName $InstallPath $OutputFile --version 2
 
-# Step 8: Clean up downloaded chunks and tarball
+# Step 8: Clean up temporary files
 Write-Host "Cleaning up temporary files..." -ForegroundColor Cyan
 Remove-Item -Force $ChunkPattern
 Remove-Item -Force $OutputFile
 Remove-Item -Force "$OutputFile.sha256"
+Remove-Item -Force "$OutputFile.parts.sha256"
 
 # Step 9: Add profile to Windows Terminal
 Write-Host "Adding Windows Terminal profile..." -ForegroundColor Cyan
