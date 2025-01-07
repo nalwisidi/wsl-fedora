@@ -1,0 +1,40 @@
+#!/bin/bash
+
+MARKER_FILE="/root/.wsl_welcome_shown"
+if [[ ! -f "$MARKER_FILE" ]]; then
+  cat << 'POSTER'
+🎩 Welcome to Fedora DevOps Environment 🎩
+
+This is your fully-configured Fedora-based DevOps environment.
+- Built for productivity 🛠️
+- Preloaded with essential tools 🔧
+- Tailored for containerization 📦 and cloud-native development ☁️
+
+✨ Fedora DevOps Features:
+- A modern, developer-focused WSL environment.
+- Prebuilt DevOps tools for seamless operations.
+- Enhanced productivity with advanced terminal utilities.
+
+📜 Available Commands:
+    devkit install => Install all development tools
+    devkit remove  => Remove all installed tools
+
+Enjoy your DevOps journey 🚀!
+POSTER
+  touch "$MARKER_FILE"
+
+  while true; do
+    read -p "Enter new UNIX username: " USERNAME
+    [[ -z "$USERNAME" ]] && echo "USERNAME cannot be empty." && continue
+    id "$USERNAME" &>/dev/null && echo "User $USERNAME exists." && continue
+    useradd -m "$USERNAME" && break || echo "Failed to create user. Try again."
+  done
+
+  passwd "$USERNAME"
+  echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+  chsh -s $(which zsh) "$USERNAME"
+  su - "$USERNAME" --shell /bin/zsh
+else
+  su - "$(getent passwd | awk -F: '$3==1000 {print $1}')" --shell /bin/zsh
+fi
