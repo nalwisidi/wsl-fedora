@@ -18,80 +18,69 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # # Step 2: Build Docker image
-      # - name: Build Docker image
-      #   run: docker build -t dvp-fedora .
+      # Step 2: Build Docker image
+      - name: Build Docker image
+        run: docker build -t dvp-fedora .
 
-      # # Step 3: Export Docker container to .tar
-      # - name: Export Docker container to .tar
-      #   run: |
-      #     docker create --name dvp_fedora_container dvp-fedora
-      #     docker export dvp_fedora_container > dvp-fedora.tar
-      #     docker rm dvp_fedora_container
-      #     echo "Original tar size: $(du -sh dvp-fedora.tar)"
-
-      # # Step 4: Compress the tar file
-      # - name: Compress tar file
-      #   run: |
-      #     xz -T0 -9e dvp-fedora.tar
-      #     echo "Compressed file size: $(du -sh dvp-fedora.tar.xz)"
-
-      # # Step 5: Calculate split size dynamically
-      # - name: Calculate split size
-      #   id: calculate_split_size
-      #   run: |
-      #     MAX_SIZE=2000000000  # 2GB
-      #     FILE_SIZE=$(stat --printf="%s" dvp-fedora.tar.xz)
-      #     [[ $FILE_SIZE -le $MAX_SIZE ]] && echo "split_required=false" >> $GITHUB_ENV || {
-      #       echo "split_required=true" >> $GITHUB_ENV
-      #       echo "split_size=$(( ($FILE_SIZE + $MAX_SIZE - 1) / ($FILE_SIZE / $MAX_SIZE) ))" >> $GITHUB_ENV
-      #     }
-
-      # # Step 6: Split tar file if required
-      # - name: Split tar file
-      #   if: env.split_required == 'true'
-      #   run: |
-      #     split -b $(( ${{ env.split_size }} )) dvp-fedora.tar.xz dvp-fedora.tar.xz.part-
-      #     echo "Split into $(ls dvp-fedora.tar.xz.part-* | wc -l) parts."
-
-      # # Step 7: Generate SHA256 hashes for verification
-      # - name: Generate SHA256 hashes
-      #   run: |
-      #     if ls dvp-fedora.tar.xz.part-* 1> /dev/null 2>&1; then
-      #       sha256sum dvp-fedora.tar.xz.part-* > dvp-fedora.sha256
-      #     else
-      #       sha256sum dvp-fedora.tar.xz > dvp-fedora.sha256
-      #     fi
-      #     echo "SHA256 hashes generated."
-
-      # # Step 8: Upload release assets
-      # - name: Upload release assets
-      #   env:
-      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   run: |
-      #     if ls dvp-fedora.tar.xz.part-* 1> /dev/null 2>&1; then
-      #       echo "Uploading split files..."
-      #       for file in dvp-fedora.tar.xz.part-*; do
-      #         gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
-      #       done
-      #     else
-      #       echo "Uploading single compressed file..."
-      #       gh release upload ${{ github.event.release.tag_name }} dvp-fedora.tar.xz --clobber
-      #     fi
-      #     echo "Uploading SHA256 hash file..."
-      #     gh release upload ${{ github.event.release.tag_name }} dvp-fedora.sha256 --clobber
-
-      # Step 9: Update and commit the VERSION file
-      - name: Update VERSION file
+      # Step 3: Export Docker container to .tar
+      - name: Export Docker container to .tar
         run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git checkout ${{ github.ref_name }}
-          echo "${{ github.event.release.tag_name }}" > VERSION
-          git add VERSION
-          git commit -m "Update VERSION to ${{ github.event.release.tag_name }}"
-          git push origin ${{ github.ref_name }}
+          docker create --name dvp_fedora_container dvp-fedora
+          docker export dvp_fedora_container > dvp-fedora.tar
+          docker rm dvp_fedora_container
+          echo "Original tar size: $(du -sh dvp-fedora.tar)"
 
-      # # Step 10: Clean up temporary files
-      # - name: Cleanup temporary files
-      #   run: rm -f dvp-fedora.tar dvp-fedora.tar.xz dvp-fedora.tar.xz.part-* dvp-fedora.sha256
+      # Step 4: Compress the tar file
+      - name: Compress tar file
+        run: |
+          xz -T0 -9e dvp-fedora.tar
+          echo "Compressed file size: $(du -sh dvp-fedora.tar.xz)"
+
+      # Step 5: Calculate split size dynamically
+      - name: Calculate split size
+        id: calculate_split_size
+        run: |
+          MAX_SIZE=2000000000  # 2GB
+          FILE_SIZE=$(stat --printf="%s" dvp-fedora.tar.xz)
+          [[ $FILE_SIZE -le $MAX_SIZE ]] && echo "split_required=false" >> $GITHUB_ENV || {
+            echo "split_required=true" >> $GITHUB_ENV
+            echo "split_size=$(( ($FILE_SIZE + $MAX_SIZE - 1) / ($FILE_SIZE / $MAX_SIZE) ))" >> $GITHUB_ENV
+          }
+
+      # Step 6: Split tar file if required
+      - name: Split tar file
+        if: env.split_required == 'true'
+        run: |
+          split -b $(( ${{ env.split_size }} )) dvp-fedora.tar.xz dvp-fedora.tar.xz.part-
+          echo "Split into $(ls dvp-fedora.tar.xz.part-* | wc -l) parts."
+
+      # Step 7: Generate SHA256 hashes for verification
+      - name: Generate SHA256 hashes
+        run: |
+          if ls dvp-fedora.tar.xz.part-* 1> /dev/null 2>&1; then
+            sha256sum dvp-fedora.tar.xz.part-* > dvp-fedora.sha256
+          else
+            sha256sum dvp-fedora.tar.xz > dvp-fedora.sha256
+          fi
+          echo "SHA256 hashes generated."
+
+      # Step 8: Upload release assets
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ls dvp-fedora.tar.xz.part-* 1> /dev/null 2>&1; then
+            echo "Uploading split files..."
+            for file in dvp-fedora.tar.xz.part-*; do
+              gh release upload ${{ github.event.release.tag_name }} "$file" --clobber
+            done
+          else
+            echo "Uploading single compressed file..."
+            gh release upload ${{ github.event.release.tag_name }} dvp-fedora.tar.xz --clobber
+          fi
+          echo "Uploading SHA256 hash file..."
+          gh release upload ${{ github.event.release.tag_name }} dvp-fedora.sha256 --clobber
+
+      # Step 9: Clean up temporary files
+      - name: Cleanup temporary files
+        run: rm -f dvp-fedora.tar dvp-fedora.tar.xz dvp-fedora.tar.xz.part-* dvp-fedora.sha256
