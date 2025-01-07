@@ -19,5 +19,8 @@ curl -sSL -o /usr/local/bin/kubectx https://github.com/ahmetb/kubectx/releases/l
 curl -sSL -o /usr/local/bin/kubens https://github.com/ahmetb/kubectx/releases/latest/download/kubens
 chmod +x /usr/local/bin/{argocd,kubectx,kubens}
 
-# Remove the install_packages.sh file
-rm -f /usr/local/bin/install_packages.sh
+# Configure WSL
+echo -e "[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf
+
+# Remove the docker_build.sh file
+rm -f /usr/local/bin/docker_build.sh

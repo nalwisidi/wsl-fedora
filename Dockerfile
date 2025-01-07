@@ -1,16 +1,8 @@
 FROM fedora:latest
 
-# Add repositories and install packages
-COPY scripts/install_packages.sh /usr/local/bin/
-RUN sh /usr/local/bin/install_packages.sh
-
-# Configure WSL
-RUN tee /etc/wsl.conf <<EOF > /dev/null
-[network]
-generateResolvConf = true
-[boot]
-systemd=true
-EOF
+# Add repositories, install packages and configure WSL
+COPY scripts/docker_build.sh /usr/local/bin/
+RUN sh /usr/local/bin/docker_build.sh
 
 # Add DevKit installation tool
 COPY scripts/devkit /usr/local/bin/devkit
