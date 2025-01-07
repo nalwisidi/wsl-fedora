@@ -25,16 +25,22 @@ POSTER
 
   while true; do
     read -p "Enter new UNIX username: " USERNAME
-    [[ -z "$USERNAME" ]] && echo "USERNAME cannot be empty." && continue
-    id "$USERNAME" &>/dev/null && echo "User $USERNAME exists." && continue
-    useradd -m "$USERNAME" && break || echo "Failed to create user. Try again."
+    [[ -z "\$USERNAME" ]] && echo "USERNAME cannot be empty." && continue
+    id "\$USERNAME" &>/dev/null && echo "User \$USERNAME exists." && continue
+    useradd -m "\$USERNAME" && break || echo "Failed to create user. Try again."
   done
-
-  passwd "$USERNAME"
-  echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-
-  chsh -s $(which zsh) "$USERNAME"
-  su - "$USERNAME" --shell /bin/zsh
+  while true; do
+    passwd "\$USERNAME" && echo "User \$USERNAME created successfully." && break
+    echo "Password setup failed. Try again."
+  done
+  echo "\$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+  systemctl enable --now docker && sudo gpasswd -M root,$USERNAME docker
+  echo -e "[user]\ndefault=\$USERNAME\n\n[network]\ngenerateResolvConf = true\n\n[boot]\nsystemd=true" > /etc/wsl.conf
+  chmod 644 /etc/wsl.conf
+  chsh -s $(which zsh) "\$USERNAME"
+  su - "\$USERNAME" -c 'curl -fsSL https://raw.githubusercontent.com/nalwisidi/dotfiles/main/bootstrap.sh | sh'
+  su - "\$USERNAME" --shell /bin/zsh -c "source ~/.zprofile && source ~/.config/zsh/.zshrc"
+  su - "\$USERNAME" --shell /bin/zsh
 else
-  su - "$(getent passwd | awk -F: '$3==1000 {print $1}')" --shell /bin/zsh
+  su - "\$(getent passwd | awk -F: '\$3==1000 {print \$1}')" --shell /bin/zsh
 fi
