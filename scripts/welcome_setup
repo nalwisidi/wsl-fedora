@@ -15,10 +15,6 @@ This is your fully-configured Fedora-based DevOps environment.
 - Prebuilt DevOps tools for seamless operations.
 - Enhanced productivity with advanced terminal utilities.
 
-📜 Available Commands:
-    devkit install => Install all development tools
-    devkit remove  => Remove all installed tools
-
 Enjoy your DevOps journey 🚀!
 POSTER
   touch "$MARKER_FILE"

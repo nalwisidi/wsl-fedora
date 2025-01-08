@@ -1,23 +1,43 @@
 #!/bin/bash
 
-BASE_PACKAGES="git rsync wget curl vi vim neovim zsh zoxide fzf jq yq tar unzip zip zstd top btop lf stow tmux tree fastfetch dos2unix"
-DEVOPS_TOOLS="docker podman kubectl k9s helm ansible terraform vault consul packer dnsmasq"
+BASE_PACKAGES="git git-lfs rsync wget curl vi vim neovim zsh zoxide fzf jq yq tar unzip zip zstd top btop lf stow tmux tree fastfetch"
 NETWORK_TOOLS="net-tools telnet traceroute nmap nc bind-utils iputils"
+DEVOPS_TOOLS="docker podman buildah kubectl k9s helm ansible terraform vault consul packer dnsmasq"
+DEV_TOOLS="python3 python3-pip nodejs npm java-21-openjdk ruby golang perl rust mysql postgresql redis sqlite"
 SYSTEM_TOOLS="systemd systemd-sysv systemd-container dbus passwd cmake make autoconf automake libtool"
 
 echo "Installing packages..."
 curl -o /etc/yum.repos.d/hashicorp.repo https://rpm.releases.hashicorp.com/fedora/hashicorp.repo
 dnf copr enable -y emanuelec/k9s
 dnf copr enable -y lsevcik/lf
-dnf install -y --nodocs --setopt=install_weak_deps=False $BASE_PACKAGES $DEVOPS_TOOLS $NETWORK_TOOLS $SYSTEM_TOOLS
+dnf install -y --nodocs --setopt=install_weak_deps=False $BASE_PACKAGES $NETWORK_TOOLS $DEVOPS_TOOLS $DEV_TOOLS $SYSTEM_TOOLS
 dnf clean all
 rm -rf /var/cache/dnf /tmp/* /var/tmp/* /usr/share/{man,info,doc}
 
-# Install additional tools
+# Install additional DevOps tools
 curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
 curl -sSL -o /usr/local/bin/kubectx https://github.com/ahmetb/kubectx/releases/latest/download/kubectx
 curl -sSL -o /usr/local/bin/kubens https://github.com/ahmetb/kubectx/releases/latest/download/kubens
 chmod +x /usr/local/bin/{argocd,kubectx,kubens}
+
+# Install Cloud management tools
+# OCI
+pip install oci-cli
+
+# AWS
+pip install awscli
+
+# GCP
+sudo tee /etc/yum.repos.d/google-cloud-sdk.repo <<EOF
+[google-cloud-sdk]
+name=Google Cloud SDK
+baseurl=https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-x86_64
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+sudo dnf install -y google-cloud-cli --nogpgcheck
 
 # Configure WSL
 echo -e "[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf
