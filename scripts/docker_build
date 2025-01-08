@@ -2,7 +2,7 @@
 
 BASE_PACKAGES="git git-lfs rsync wget curl vi vim neovim zsh zoxide fzf jq yq tar unzip zip zstd top btop lf stow tmux tree fastfetch"
 NETWORK_TOOLS="net-tools telnet traceroute nmap nc bind-utils iputils"
-DEVOPS_TOOLS="docker podman buildah kubectl k9s helm ansible terraform vault consul packer dnsmasq"
+DEVOPS_TOOLS="gh glab docker podman buildah kubectl k9s helm ansible terraform vault consul packer dnsmasq"
 DEV_TOOLS="python3 python3-pip nodejs npm java-21-openjdk ruby golang perl rust mysql postgresql redis sqlite"
 SYSTEM_TOOLS="systemd systemd-sysv systemd-container dbus passwd cmake make autoconf automake libtool"
 
@@ -14,7 +14,7 @@ dnf install -y --nodocs --setopt=install_weak_deps=False $BASE_PACKAGES $NETWORK
 dnf clean all
 rm -rf /var/cache/dnf /tmp/* /var/tmp/* /usr/share/{man,info,doc}
 
-# Install additional DevOps tools
+# Install additional DevOps and other tools
 curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
 curl -sSL -o /usr/local/bin/kubectx https://github.com/ahmetb/kubectx/releases/latest/download/kubectx
 curl -sSL -o /usr/local/bin/kubens https://github.com/ahmetb/kubectx/releases/latest/download/kubens
