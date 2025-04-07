@@ -52,7 +52,7 @@ if echo "$ROLES" | grep -q "DevOps"; then
   echo "[+] Running additional DevOps setup..."
 
   echo "[+] Installing argocd, kubectx, and kubens..."
-  sudo url -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+  sudo curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
   sudo curl -sSL -o /usr/local/bin/kubectx https://github.com/ahmetb/kubectx/releases/latest/download/kubectx
   sudo curl -sSL -o /usr/local/bin/kubens https://github.com/ahmetb/kubectx/releases/latest/download/kubens
   sudo chmod +x /usr/local/bin/{argocd,kubectx,kubens}
