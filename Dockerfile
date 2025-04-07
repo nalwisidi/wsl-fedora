@@ -10,9 +10,9 @@ RUN dnf install -y \
   sudo passwd shadow-utils util-linux-user \
   dbus systemd systemd-container \
   iproute iputils hostname procps-ng which less man-db \
-  curl wget rsync net-tools dnsutils traceroute bind-utils telnet nmap nc \
+  curl wget rsync net-tools dnsutils traceroute bind-utils telnet nmap nc dnsmasq \
   zsh fzf zoxide bash-completion tzdata openssh gnupg2 \
-  git git-lfs stow tree tmux htop btop unzip zip tar zstd jq yq fastfetch \
+  git git-lfs stow tree tmux htop btop unzip zip tar zstd jq yq fastfetch lf \
   vim-enhanced neovim glibc-langpack-en gum \
   && dnf clean all && rm -rf /var/cache/dnf /tmp/* /var/tmp/*
 

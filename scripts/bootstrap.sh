@@ -17,7 +17,7 @@ echo "[+] Selected roles: $ROLES"
 
 # 2. Define role-based packages
 BASE_PACKAGES="cmake make autoconf automake libtool"
-DEVOPS_PACKAGES="kubectl helm k9s ansible terraform vault packer"
+DEVOPS_PACKAGES="gh glab docker podman buildah kubectl helm k9s ansible terraform vault consul packer"
 DEVELOPER_PACKAGES="nodejs npm python3 python3-pip java-21-openjdk ruby golang perl rust"
 DBA_PACKAGES="mysql postgresql sqlite redis"
 
@@ -77,11 +77,11 @@ EOF
   sudo dnf install -y google-cloud-cli --nogpgcheck
 fi
 
-# # 7. Customize environment
-# if gum confirm "[?] Customize your environment? (neovim, tmux, zsh, git, k9s, lf, and more..)"; then
-#   # TODO
-# else
-#   echo "[-] Skipping customization."
-# fi
+# 7. Customize environment
+if gum confirm "[?] Customize your environment? (neovim, tmux, zsh, git, k9s, lf, and more..)"; then
+  curl -fsSL https://raw.githubusercontent.com/nalwisidi/dotfiles/main/bootstrap.sh | sh
+else
+  echo "[-] Skipping customization."
+fi
 
 echo "✅ Bootstrap completed at $(date)"
