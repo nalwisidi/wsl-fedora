@@ -29,7 +29,7 @@ RUN setcap cap_net_raw+ep /bin/ping
 
 RUN echo "[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf
 
-RUN tee -a /etc/zshrc > /dev/null <<'EOF'
+RUN tee -a /etc/zshrc > /dev/null <<EOF
 
 # Run initial setup script once
 if [ -f "\$HOME/.initial_setup.sh" ]; then
