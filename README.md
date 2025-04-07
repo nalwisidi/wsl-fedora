@@ -19,7 +19,7 @@ This project offers a minimal, customizable Fedora image for use with Windows Su
 Run the following in PowerShell to fetch the latest image and install it as a WSL distro:
 
 ```powershell
-powershell -Command "& { (Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/nalwisidi/wsl-fedora/main/install_fedora.ps1').Content | powershell -ExecutionPolicy Bypass - }"
+powershell -Command "& { (iwr 'https://raw.githubusercontent.com/nalwisidi/wsl-fedora/main/install_fedora.ps1').Content | iex }"
 ```
 
 This will:
