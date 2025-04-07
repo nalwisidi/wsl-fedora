@@ -27,14 +27,16 @@ RUN localedef -c -i en_US -f UTF-8 en_US.UTF-8 || true && \
 # Enable ping without sudo
 RUN setcap cap_net_raw+ep /bin/ping
 
+# Enable sudo without passwords
+RUN sed -i -E 's/^#\s*(%wheel\s+ALL=\(ALL\)\s+NOPASSWD: ALL)/\1/' /etc/sudoers
+
+# Enable systemd + setup networking
 RUN echo "[network]\ngenerateResolvConf = true\n[boot]\nsystemd=true" > /etc/wsl.conf
 
+# Harden running initial setup script once
 RUN tee -a /etc/zshrc > /dev/null <<EOF
-
-# Run initial setup script once
 if [ -f "\$HOME/.initial_setup.sh" ]; then
-  bash "\$HOME/.initial_setup.sh"
-  rm -f "\$HOME/.initial_setup.sh"
+  bash "\$HOME/.initial_setup.sh" && rm -f "\$HOME/.initial_setup.sh"
 fi
 EOF
 
