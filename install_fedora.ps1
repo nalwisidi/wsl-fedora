@@ -1,143 +1,138 @@
 Set-Location -Path $PSScriptRoot
 
-# ─── Configs ───────────────────────────────────────────────────
+# ─── Config ─────────────────────────────────────────────────────
 $RepoOwner = "nalwisidi"
 $RepoName = "wsl-fedora"
-$InstallPath = "$env:USERPROFILE\AppData\Local\WSL\$DistroName"
 $OutputFile = "wsl-fedora.tar.xz"
-$ChunkPattern = "wsl-fedora.tar.xz.part-*"
+$ChunkPattern = "$OutputFile.part-*"
 $HashFile = "wsl-fedora.sha256"
 
-# ─── Pick DistroName ───────────────────────────────────────────
-$UserInput = Read-Host "Enter a name for your WSL distro (default: Fedora)"
-if ([string]::IsNullOrWhiteSpace($UserInput)) {
+# ─── Ask for Distro Name ───────────────────────────────────────
+$DistroName = Read-Host "Enter a name for your WSL distro (default: Fedora)"
+if ([string]::IsNullOrWhiteSpace($DistroName)) {
     $DistroName = "Fedora"
     Write-Host "[*] Using default distro name: Fedora" -ForegroundColor Yellow
 } else {
-    $DistroName = $UserInput
     Write-Host "[+] Distro name set to: $DistroName" -ForegroundColor Green
 }
+$InstallPath = "$env:USERPROFILE\AppData\Local\WSL\$DistroName"
 
-# ─── Fetch Latest Release ──────────────────────────────────────
-Write-Host "`n[?] Fetching the latest release..." -ForegroundColor Cyan
+# ─── Fetch GitHub Release Info ─────────────────────────────────
+Write-Host "`n[?] Fetching latest release..." -ForegroundColor Cyan
 try {
-  $LatestRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
-  $ReleaseTag = $LatestRelease.tag_name
-  $ReleaseAssets = $LatestRelease.assets
-  Write-Host "[+] Latest release: $ReleaseTag" -ForegroundColor Green
+    $release = Invoke-RestMethod "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
+    $assets = $release.assets
+    Write-Host "[+] Release: $($release.tag_name)" -ForegroundColor Green
 } catch {
-  Write-Host "[x] Failed to fetch the latest release." -ForegroundColor Red
-  exit 1
+    Write-Host "[x] Failed to fetch release." -ForegroundColor Red
+    exit 1
 }
 
-# ─── Download Hash File ────────────────────────────────────────
-$HashUrl = $ReleaseAssets | Where-Object { $_.name -eq $HashFile } | Select-Object -ExpandProperty browser_download_url -ErrorAction SilentlyContinue
-if (-not $HashUrl) {
-  Write-Host "[x] Hash file not found in the release." -ForegroundColor Red
-  exit 1
+# ─── Download SHA256 Hash File ─────────────────────────────────
+$hashUrl = $assets | Where-Object { $_.name -eq $HashFile } | Select-Object -ExpandProperty browser_download_url
+if (-not $hashUrl) {
+    Write-Host "[x] Hash file missing in release." -ForegroundColor Red; exit 1
 }
 Write-Host "`n[?] Downloading hash file..." -ForegroundColor Cyan
-Start-BitsTransfer -Source $HashUrl -Destination $HashFile
+Start-BitsTransfer -Source $hashUrl -Destination $HashFile
 
-# ─── Download RootFS ───────────────────────────────────────────
-$SingleTarball = $ReleaseAssets | Where-Object { $_.name -eq $OutputFile } | Select-Object -ExpandProperty browser_download_url -ErrorAction SilentlyContinue
-$ChunkList = $ReleaseAssets | Where-Object { $_.name -like $ChunkPattern } | Select-Object -ExpandProperty browser_download_url -ErrorAction SilentlyContinue
-
-if ($SingleTarball) {
-  Write-Host "`n[?] Downloading single tarball..." -ForegroundColor Cyan
-  Start-BitsTransfer -Source $SingleTarball -Destination $OutputFile
-} elseif ($ChunkList) {
-  Write-Host "`n[?] Downloading chunks and reassembling..." -ForegroundColor Cyan
-  $TotalChunks = $ChunkList.Count
-  $CurrentChunk = 0
-  foreach ($Url in $ChunkList) {
-    $CurrentChunk++
-    $FileName = ($Url -split '/')[-1]
-    Write-Host "[$CurrentChunk/$TotalChunks] Downloading $FileName..." -ForegroundColor Yellow
-    Start-BitsTransfer -Source $Url -Destination $FileName
-  }
-
-  Write-Host "`n[?] Reassembling chunks..." -ForegroundColor Cyan
-  try {
-    $ChunkFiles = Get-ChildItem -Filter $ChunkPattern | Sort-Object Name
-    $FileStream = [System.IO.File]::Create($OutputFile)
-    $Buffer = New-Object Byte[] 81920
-    foreach ($Chunk in $ChunkFiles) {
-      $ChunkStream = [System.IO.File]::OpenRead($Chunk.FullName)
-      while (($BytesRead = $ChunkStream.Read($Buffer, 0, $Buffer.Length)) -gt 0) {
-        $FileStream.Write($Buffer, 0, $BytesRead)
-      }
-      $ChunkStream.Close()
+# ─── Download Tarball or Chunks ────────────────────────────────
+$tarUrl = $assets | Where-Object { $_.name -eq $OutputFile } | Select-Object -ExpandProperty browser_download_url
+$chunkUrls = $assets | Where-Object { $_.name -like $ChunkPattern } | Select-Object -ExpandProperty browser_download_url
+if ($tarUrl) {
+    Write-Host "`n[?] Downloading single tarball..." -ForegroundColor Cyan
+    Start-BitsTransfer -Source $tarUrl -Destination $OutputFile
+} elseif ($chunkUrls) {
+    Write-Host "`n[?] Downloading chunks..." -ForegroundColor Cyan
+    $i = 0
+    foreach ($url in $chunkUrls) {
+        $i++
+        $file = ($url -split '/')[-1]
+        Write-Host "[$i/$($chunkUrls.Count)] $file" -ForegroundColor Yellow
+        Start-BitsTransfer -Source $url -Destination $file
     }
-    $FileStream.Close()
-    Write-Host "[+] Chunks successfully reassembled." -ForegroundColor Green
-  } catch {
-    Write-Host "[x] Failed to reassemble chunks." -ForegroundColor Red
-    exit 1
-  }
+
+    Write-Host "`n[?] Reassembling chunks..." -ForegroundColor Cyan
+    try {
+        $out = [System.IO.File]::Create($OutputFile)
+        $buf = New-Object byte[] 81920
+        foreach ($chunk in (Get-ChildItem -Filter $ChunkPattern | Sort-Object Name)) {
+            $s = [System.IO.File]::OpenRead($chunk.FullName)
+            while (($r = $s.Read($buf, 0, $buf.Length)) -gt 0) { $out.Write($buf, 0, $r) }
+            $s.Close()
+        }
+        $out.Close()
+        Write-Host "[+] Chunks reassembled." -ForegroundColor Green
+    } catch {
+        Write-Host "[x] Chunk reassembly failed." -ForegroundColor Red; exit 1
+    }
 } else {
-  Write-Host "[x] No release assets found." -ForegroundColor Red
-  exit 1
+    Write-Host "[x] No release tarball or chunks found." -ForegroundColor Red; exit 1
 }
 
 # ─── Verify Hash ───────────────────────────────────────────────
-Write-Host "`n[?] Verifying file integrity..." -ForegroundColor Cyan
+Write-Host "`n[?] Verifying hash..." -ForegroundColor Cyan
 try {
-  $ExpectedHash = (Get-Content $HashFile | Where-Object { $_ -match $OutputFile }).Split(" ")[0]
-  $ActualHash = (Get-FileHash $OutputFile -Algorithm SHA256).Hash
-  if ($ExpectedHash -ne $ActualHash) {
-    Write-Host "[x] Hash mismatch! Expected: $ExpectedHash, Got: $ActualHash" -ForegroundColor Red
+    $expected = (Get-Content $HashFile | Where-Object { $_ -match $OutputFile }) -split ' ' | Select-Object -First 1
+    $actual = (Get-FileHash $OutputFile -Algorithm SHA256).Hash
+    if ($expected -ne $actual) {
+        Write-Host "[x] Hash mismatch." -ForegroundColor Red
+        Remove-Item -Force $ChunkPattern, $OutputFile, $HashFile -ErrorAction SilentlyContinue
+        exit 1
+    }
+    Write-Host "[+] Hash verified." -ForegroundColor Green
+} catch {
+    Write-Host "[x] Hash verification failed." -ForegroundColor Red
     Remove-Item -Force $ChunkPattern, $OutputFile, $HashFile -ErrorAction SilentlyContinue
     exit 1
-  }
-  Write-Host "[+] Hash verified successfully." -ForegroundColor Green
-} catch {
-  Write-Host "[x] Failed to verify hash." -ForegroundColor Red
-  Remove-Item -Force $ChunkPattern, $OutputFile, $HashFile -ErrorAction SilentlyContinue
-  exit 1
 }
 
-# ─── Import WSL Distro ─────────────────────────────────────────
+# ─── Import Distro ─────────────────────────────────────────────
 Write-Host "`n[?] Importing Fedora WSL..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $InstallPath | Out-Null
 wsl --import $DistroName $InstallPath $OutputFile --version 2
 
-# ─── Prompt User Creation ──────────────────────────────────────
+# ─── Launch User Creation ──────────────────────────────────────
 Start-Process "wsl.exe" -ArgumentList "-d", $DistroName, "-u", "root", "--", "bash", "/usr/local/bin/create_user" -Wait -NoNewWindow
 
-# ─── Read Clean Username ───────────────────────────────────────
-$username = (wsl -d $DistroName -u root -- cat /username_created) `
-  | Where-Object { $_ -and $_.Trim() -ne "" } `
-  | Select-Object -First 1 `
-  | ForEach-Object { $_.Trim() }
-
+# ─── Read and Validate Username ────────────────────────────────
+$username = (wsl -d $DistroName -u root -- cat /username_created).Trim()
 if (-not $username -or $username -match '[^\w.-]') {
-  Write-Host "`n[x] Invalid username: '$username'" -ForegroundColor Red
-  wsl -d $DistroName -u root -- rm -f /username_created
-  exit 1
+    Write-Host "[x] Invalid username: '$username'" -ForegroundColor Red
+    wsl -d $DistroName -u root -- rm -f /username_created
+    exit 1
 }
 
-# ─── Finalize and Cleanup ──────────────────────────────────────
+# ─── Finalize and Clean ────────────────────────────────────────
 wsl -d $DistroName -u root -- rm -f /username_created
 wsl --manage $DistroName --set-default-user $username
+Remove-Item -Force $ChunkPattern, $OutputFile, $HashFile -ErrorAction SilentlyContinue
 
-Remove-Item -Force $ChunkPattern -ErrorAction SilentlyContinue
-Remove-Item -Force $OutputFile, $HashFile -ErrorAction SilentlyContinue
-
-# ─── Terminal Profile Setup ───────────────────────────────────────
-$WTSettingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
-
-if (Test-Path $WTSettingsPath) {
+# ─── WT Profile Setup ──────────────────────────────────────────
+function Find-WTSettingsPath {
+    $candidates = @(
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json",
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json",
+        "$env:LOCALAPPDATA\Microsoft\Windows Terminal\settings.json"
+    )
+    foreach ($path in $candidates) {
+        if (Test-Path $path) { return $path }
+    }
+    Write-Host "[~] Searching for settings.json under LOCALAPPDATA..." -ForegroundColor DarkGray
+    return Get-ChildItem -Path $env:LOCALAPPDATA -Recurse -Filter settings.json -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match 'windows.?terminal' } |
+        Select-Object -ExpandProperty FullName -First 1
+}
+$WTSettingsPath = Find-WTSettingsPath
+if (-not $WTSettingsPath) {
+    Write-Host "[!] Could not locate settings.json for Windows Terminal." -ForegroundColor Red
+} else {
     Write-Host "[?] Updating Windows Terminal profile..." -ForegroundColor Cyan
-
     $WTSettings = Get-Content $WTSettingsPath -Raw | ConvertFrom-Json
-
-    # Inject custom profile if not already added
-    $custom = $WTSettings.profiles.list | Where-Object {
+    $customExists = $WTSettings.profiles.list | Where-Object {
         $_.name -eq $DistroName -and $_.commandline -eq "wsl.exe -d $DistroName"
     }
-
-    if (-not $custom) {
+    if (-not $customExists) {
         $WTSettings.profiles.list += @{
             name              = $DistroName
             commandline       = "wsl.exe -d $DistroName"
@@ -149,23 +144,16 @@ if (Test-Path $WTSettingsPath) {
     } else {
         Write-Host "[-] Custom profile already exists." -ForegroundColor Yellow
     }
-
-    # Force WT to reload settings
     $WTSettings | ConvertTo-Json -Depth 10 | Set-Content $WTSettingsPath -Force
     Start-Sleep -Seconds 1
-
-    # Reload and remove duplicate (auto-generated) profiles
     $WTSettings = Get-Content $WTSettingsPath -Raw | ConvertFrom-Json
     $WTSettings.profiles.list = $WTSettings.profiles.list | Where-Object {
         $_.name -ne $DistroName -or $_.commandline -eq "wsl.exe -d $DistroName"
     }
-
     $WTSettings | ConvertTo-Json -Depth 10 | Set-Content $WTSettingsPath -Force
-    Write-Host "[✓] Finalized profile setup for $DistroName." -ForegroundColor Green
-} else {
-    Write-Host "[!] Terminal settings.json not found." -ForegroundColor Red
+    Write-Host "[✓] WT profile finalized for $DistroName." -ForegroundColor Green
 }
 
-# ─── Complete ──────────────────────────────────────────────────
-Write-Host "`n[+] Fedora WSL installed with user '$username'. Launch with:" -ForegroundColor Green
-Write-Host "wsl -d $DistroName" -ForegroundColor Green
+# ─── Done ──────────────────────────────────────────────────────
+Write-Host "`n[+] Fedora WSL installed with user '$username'." -ForegroundColor Green
+Write-Host "    Launch it with: wsl -d $DistroName`n" -ForegroundColor Green

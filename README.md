@@ -43,6 +43,33 @@ scripts/bootstrap.sh
 
 ---
 
+## ❌ Uninstalling WSL Fedora
+
+If you decide to remove WSL Fedora from your system, follow these simple steps:
+
+1. **Unregister the distro** from WSL (this deletes all files and users for that distro):
+
+   ```powershell
+   wsl --unregister Fedora
+   ```
+
+   Replace `Fedora` with your custom distro name if you provided one during setup.
+
+2. **Remove the Windows Terminal profile** (optional, for cleanup):
+
+   - Open Windows Terminal settings:
+     - Press `Ctrl` + `,` or click the dropdown arrow ▾ and choose "Settings"
+   - If using the GUI:
+     - Find the profile named *Fedora* (or your custom name)
+     - Click the trash icon 🗑️ to delete it
+   - If editing the JSON manually:
+     - Open the JSON settings file (`settings.json`)
+     - Delete the object in the `profiles.list` array where `"name"` matches your distro name
+
+That’s it — WSL Fedora is now removed from your system.
+
+---
+
 ## 🧰 Project Layout
 
 - `/scripts` – includes the create_user and bootstrap scripts
