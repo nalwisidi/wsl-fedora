@@ -124,27 +124,46 @@ wsl --manage $DistroName --set-default-user $username
 Remove-Item -Force $ChunkPattern -ErrorAction SilentlyContinue
 Remove-Item -Force $OutputFile, $HashFile -ErrorAction SilentlyContinue
 
-# ─── Add to Windows Terminal ───────────────────────────────────
+# ─── Terminal Profile Setup ───────────────────────────────────────
 $WTSettingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+
 if (Test-Path $WTSettingsPath) {
-  $WTSettings = Get-Content $WTSettingsPath | ConvertFrom-Json
-  $ProfileExists = $WTSettings.profiles.list | Where-Object { $_.name -eq $DistroName }
-  if (-not $ProfileExists) {
-    $NewProfile = @{
-      name              = $DistroName
-      commandline       = "wsl.exe -d $DistroName"
-      icon              = "https://fedoraproject.org/favicon.ico"
-      startingDirectory = "~"
-      hidden            = $false
+    Write-Host "[?] Updating Windows Terminal profile..." -ForegroundColor Cyan
+
+    $WTSettings = Get-Content $WTSettingsPath -Raw | ConvertFrom-Json
+
+    # Inject custom profile if not already added
+    $custom = $WTSettings.profiles.list | Where-Object {
+        $_.name -eq $DistroName -and $_.commandline -eq "wsl.exe -d $DistroName"
     }
-    $WTSettings.profiles.list += $NewProfile
+
+    if (-not $custom) {
+        $WTSettings.profiles.list += @{
+            name              = $DistroName
+            commandline       = "wsl.exe -d $DistroName"
+            icon              = "https://fedoraproject.org/favicon.ico"
+            startingDirectory = "~"
+            hidden            = $false
+        }
+        Write-Host "[+] Custom profile added." -ForegroundColor Green
+    } else {
+        Write-Host "[-] Custom profile already exists." -ForegroundColor Yellow
+    }
+
+    # Force WT to reload settings
     $WTSettings | ConvertTo-Json -Depth 10 | Set-Content $WTSettingsPath -Force
-    Write-Host "[+] Profile added to Windows Terminal." -ForegroundColor Green
-  } else {
-    Write-Host "[-] Profile already exists in Windows Terminal." -ForegroundColor Yellow
-  }
+    Start-Sleep -Seconds 1
+
+    # Reload and remove duplicate (auto-generated) profiles
+    $WTSettings = Get-Content $WTSettingsPath -Raw | ConvertFrom-Json
+    $WTSettings.profiles.list = $WTSettings.profiles.list | Where-Object {
+        $_.name -ne $DistroName -or $_.commandline -eq "wsl.exe -d $DistroName"
+    }
+
+    $WTSettings | ConvertTo-Json -Depth 10 | Set-Content $WTSettingsPath -Force
+    Write-Host "[✓] Finalized profile setup for $DistroName." -ForegroundColor Green
 } else {
-  Write-Host "[!] Windows Terminal settings.json not found. Skipping profile addition." -ForegroundColor Yellow
+    Write-Host "[!] Terminal settings.json not found." -ForegroundColor Red
 }
 
 # ─── Complete ──────────────────────────────────────────────────
