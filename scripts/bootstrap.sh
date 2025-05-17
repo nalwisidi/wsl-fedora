@@ -17,11 +17,21 @@ echo "────────────────────────�
 # ──[ Temporarily disable logging for gum ]──
 exec 1>&3 2>&4  # Restore stdout/stderr
 
-ROLES=$(gum choose --no-limit --header "🎯 Pick your roles (multi-select):" \
-  "DevOps" "Developer" "DBA" "Minimal")
+while true; do
+  ROLES=$(gum choose --no-limit --header "🎯 Pick at least one role:" \
+    "DevOps" "Developer" "DBA" "Minimal")
+
+  if [[ -n "$ROLES" ]]; then
+    break
+  else
+    echo "⚠️ You must select at least one role." >&2
+    sleep 1
+  fi
+done
 
 # ──[ Resume logging ]──
 exec > >(tee -a "$LOG_FILE") 2>&1
+
 
 echo "✅ Selected roles: $ROLES"
 
