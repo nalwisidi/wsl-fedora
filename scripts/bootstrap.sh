@@ -2,6 +2,11 @@
 set -euo pipefail
 
 LOG_FILE="$HOME/.bootstrap.log"
+
+# Save original stdout/stderr
+exec 3>&1 4>&2
+
+# Start logging
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "──────────────────────────────────────────────"
@@ -9,9 +14,14 @@ echo "🛠️ Bootstrapping Fedora WSL Environment"
 echo "📄 Logging to: $LOG_FILE"
 echo "──────────────────────────────────────────────"
 
-# 1. Role selection
+# ──[ Temporarily disable logging for gum ]──
+exec 1>&3 2>&4  # Restore stdout/stderr
+
 ROLES=$(gum choose --no-limit --header "🎯 Pick your roles (multi-select):" \
   "DevOps" "Developer" "DBA" "Minimal")
+
+# ──[ Resume logging ]──
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "✅ Selected roles: $ROLES"
 
@@ -23,7 +33,7 @@ DBA_PACKAGES="mysql postgresql sqlite redis"
 
 # 3. Minimal-only mode
 if [[ "$ROLES" == "Minimal" ]]; then
-  echo "ℹ️  'Minimal' selected — skipping package installation."
+  echo "ℹ️ 'Minimal' selected — skipping package installation."
 else
   # 4. Build install list
   ROLE_PACKAGES=""
@@ -40,7 +50,7 @@ else
     echo "🔧 Installing base + role packages..."
     sudo dnf install -y $BASE_PACKAGES $ROLE_PACKAGES
   else
-    echo "⏭️  Skipping package installation."
+    echo "⏭️ Skipping package installation."
   fi
 
   # 6. Extra DevOps tools
@@ -60,14 +70,14 @@ else
     pip install awscli
 
     echo "🔧 Configuring Google Cloud CLI repo..."
-    sudo tee /etc/yum.repos.d/google-cloud-sdk.repo > /dev/null <<-EOF
-		[google-cloud-sdk]
-		name=Google Cloud SDK
-		baseurl=https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-x86_64
-		enabled=1
-		gpgcheck=0
-		repo_gpgcheck=0
-		gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    sudo tee /etc/yum.repos.d/google-cloud-sdk.repo > /dev/null <<EOF
+[google-cloud-sdk]
+name=Google Cloud SDK
+baseurl=https://packages.cloud.google.com/yum/repos/cloud-sdk-el9-x86_64
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
 EOF
 
     echo "📥 Installing Google Cloud CLI..."
@@ -83,25 +93,23 @@ if ! command -v zsh &> /dev/null; then
   sudo dnf install -y zsh
 fi
 
-# Only configure fallback .zshrc if it doesn't exist
 ZSHRC="$HOME/.zshrc"
 if [[ ! -f "$ZSHRC" ]]; then
   echo "📄 Creating fallback .zshrc with simple prompt..."
-  cat > "$ZSHRC" <<-'EOF'
-	# Fallback prompt: current path then >
-	PROMPT='%~\n> '
+  cat > "$ZSHRC" <<'EOF'
+# Fallback prompt: current path then >
+PROMPT='%~\n> '
 EOF
 else
   echo "⏩ .zshrc already exists — skipping fallback prompt setup."
 fi
 
-# Make zsh the default shell if not already
 if [[ "$SHELL" != "$(which zsh)" ]]; then
   echo "🔄 Changing default shell to zsh..."
   chsh -s "$(which zsh)" || echo "⚠️  Could not change shell automatically. Run: chsh -s $(which zsh)"
 fi
 
-# 8. Environment customization (dotfiles)
+# 8. Environment customization
 if gum confirm "🎨 Customize environment? (neovim, tmux, zsh, git, etc.)"; then
   echo "✨ Applying dotfiles..."
   curl -fsSL https://raw.githubusercontent.com/nalwisidi/dotfiles/main/bootstrap.sh | sh
