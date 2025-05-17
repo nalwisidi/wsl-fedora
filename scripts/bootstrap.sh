@@ -24,7 +24,7 @@ while true; do
   if [[ -n "$ROLES" ]]; then
     break
   else
-    echo "⚠️ You must select at least one role." >&2
+    echo "❗ You must select at least one role." >&2
     sleep 1
   fi
 done
@@ -33,7 +33,7 @@ done
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 
-echo "✅ Selected roles: $ROLES"
+echo "✅ Selected roles: $(echo "$ROLES" | paste -sd ', ' -)"
 
 # 2. Define role-based packages
 BASE_PACKAGES="cmake make autoconf automake libtool python3 python3-pip"
